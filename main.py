@@ -1,81 +1,84 @@
 import json
-import os
+import logging
+import requests
 from flask import Flask, request, jsonify
 from decouple import config
-from langchain.output_parsers import PydanticOutputParser
-from langchain.prompts.prompt import PromptTemplate
-from langchain.chat_models import ChatOpenAI
-from langchain.callbacks import get_openai_callback
 from pydantic import BaseModel, Field
 from typing import List
 
-# Initialize Flask app
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# Define recommendation format
+GEMINI_API_KEY = config("GEMINI_API_KEY", default="AIzaSyAWg1Vk9_WUDuehLy-ojdKLht6kOpuftdE")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+
 class GetRecommendationFormat(BaseModel):
     recommendation: List[str] = Field(
-        description="Provide 5 actionable prevention steps for the patient's brain disease."
+        description="Provide 5 actionable prevention steps for the patient's eye disease."
     )
 
-# Function to get AI-based recommendations
-def getRecommendationFromAI(data):
-    os.environ["OPENAI_API_KEY"] = config("OPENAI_API_KEY")
+def build_prompt(data):
+    return f"""
+You are a specialized AI Neuroradiologist. Based on the patient's information and predicted brain disease from a deep learning model, 
+provide five personalized, preventive recommendations to help manage or mitigate the condition.
 
-    PROMPT_TEMPLATE = """
-    You are a specialized AI Neuroradiologist. Based on the patient's information and predicted brain disease from a deep learning model, 
-    provide five personalized, preventive recommendations to help manage or mitigate the condition.
+- Age: {data['patient_age']}
+- Gender: {data['patient_gender']}
+- Symptoms: {data['symptoms']}
+- Medical History: {data['medicalHistory']}
+- Predicted Brain Disease: {data['brain_prediction']['prediction']}
 
-    Patient Information:
-    - Age: {patient_age}
-    - Gender: {patient_gender}
-    - Symptoms: {symptoms}
-    - Medical History: {medicalHistory}
-    - Predicted Brain Disease: {brain_prediction}
+Return the output as a JSON list of 5 actionable recommendations under the key "recommendation".
+Example:
+{{ "recommendation": ["tip1", "tip2", "tip3", "tip4", "tip5"] }}
+""".strip()
 
-    Return the recommendations in the following JSON format:
-    {formatting_instructions}
-    """
+def getRecommendationFromGemini(data):
+    prompt = build_prompt(data)
+    logging.info("🚀 Sending prompt to Gemini:\n%s", prompt)
 
-    llm = ChatOpenAI(temperature=0.5, model_name="gpt-4")
-    parser = PydanticOutputParser(pydantic_object=GetRecommendationFormat)
-
-    prompt = PromptTemplate(
-        input_variables=[
-            "patient_age", "patient_gender", "symptoms", 
-            "medicalHistory", "brain_prediction",
-            "formatting_instructions"
-        ],
-        template=PROMPT_TEMPLATE,
-    )
-
-    chain = prompt | llm | parser
-
-    with get_openai_callback() as cb:
-        result = chain.invoke(
+    payload = {
+        "contents": [
             {
-                "patient_age": data["patient_age"],
-                "patient_gender": data["patient_gender"],
-                "symptoms": data["symptoms"],
-                "medicalHistory": data["medicalHistory"],
-                "brain_prediction": data["brain_prediction"]["prediction"],
-                "formatting_instructions": parser.get_format_instructions(),
+                "parts": [{"text": prompt}]
             }
-        )
-        total_tokens = cb.total_tokens
+        ]
+    }
 
-    return {"recommendation": result.recommendation, "totalTokens": total_tokens}
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(GEMINI_URL, headers=headers, json=payload)
 
-# Flask route
+    if response.status_code != 200:
+        logging.error("❌ Gemini API error: %s", response.text)
+        raise Exception(f"Gemini API error: {response.text}")
+
+    candidates = response.json().get("candidates", [])
+    if not candidates:
+        raise Exception("No response candidates from Gemini API.")
+
+    raw_text = candidates[0]["content"]["parts"][0]["text"]
+    logging.info("🎯 Gemini raw response:\n%s", raw_text)
+
+    try:
+        # Strip triple backticks and parse JSON
+        clean_text = raw_text.strip("`").replace("json", "").strip()
+        recommendation_data = json.loads(clean_text)
+        GetRecommendationFormat(**recommendation_data)  # Validate structure
+        return recommendation_data
+    except Exception as e:
+        logging.exception("❌ Failed to parse Gemini response")
+        raise Exception(f"Failed to parse Gemini response: {e}")
+
 @app.route("/get-recommendation", methods=["POST"])
 def get_recommendation():
     try:
         data = request.json
-        response = getRecommendationFromAI(data)
+        logging.info("📥 Incoming request data: %s", data)
+        response = getRecommendationFromGemini(data)
         return jsonify(response), 200
     except Exception as e:
+        logging.exception("🔥 Exception in /get-recommendation")
         return jsonify({"error": str(e)}), 500
-
-# Run Flask server
+        
 if __name__ == "__main__":
     app.run(debug=True)

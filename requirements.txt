@@ -1,8 +1,4 @@
 Flask
+requests
 python-decouple
-langchain==0.1.14
-openai
 pydantic
-tiktoken
-pymongo
-python-dotenv
