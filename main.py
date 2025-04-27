@@ -12,26 +12,33 @@ logging.basicConfig(level=logging.INFO)
 GEMINI_API_KEY = config("GEMINI_API_KEY", default="AIzaSyAWg1Vk9_WUDuehLy-ojdKLht6kOpuftdE")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
 
+
 class GetRecommendationFormat(BaseModel):
     recommendation: List[str] = Field(
-        description="Provide 5 actionable prevention steps for the patient's brain tumor disease."
+        description="Provide 5 personalized prevention steps for the patient's brain tumor condition, each including a risk factor explanation."
     )
 
 def build_prompt(data):
     return f"""
-You are a specialized AI Neuroradiologist. Based on the patient's information and predicted brain tumor disease from a deep learning model, 
-provide five personalized, preventive recommendations to help manage or mitigate the condition.
+You are a specialized AI Neuroradiologist. Based on the patient's information and the predicted brain tumor type identified by a deep learning model, 
+generate five personalized, preventive recommendations to help the patient manage or mitigate the condition effectively.
 
+Each recommendation must include:
+- A specific preventive action.
+- A brief Risk Factor Explanation explaining why this action is important for this patient's tumor type and medical profile.
+
+Patient Details:
 - Age: {data['patient_age']}
 - Gender: {data['patient_gender']}
 - Symptoms: {data['symptoms']}
 - Medical History: {data['medicalHistory']}
 - Predicted Brain Disease: {data['brain_prediction']['prediction']}
 
-Return the output as a JSON list of 5 actionable recommendations under the key "recommendation".
+Return the output as a JSON list under the key "recommendation", where each item contains both the action and its risk factor explanation.
 Example:
-{{ "recommendation": ["tip1", "tip2", "tip3", "tip4", "tip5"] }}
+{{ "recommendation": ["Step 1 - Explanation 1", "Step 2 - Explanation 2", "Step 3 - Explanation 3", "Step 4 - Explanation 4", "Step 5 - Explanation 5"] }}
 """.strip()
+
 
 def getRecommendationFromGemini(data):
     prompt = build_prompt(data)
