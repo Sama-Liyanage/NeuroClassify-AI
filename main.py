@@ -14,12 +14,12 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.
 
 class GetRecommendationFormat(BaseModel):
     recommendation: List[str] = Field(
-        description="Provide 5 actionable prevention steps for the patient's eye disease."
+        description="Provide 5 actionable prevention steps for the patient's brain tumor disease."
     )
 
 def build_prompt(data):
     return f"""
-You are a specialized AI Neuroradiologist. Based on the patient's information and predicted brain disease from a deep learning model, 
+You are a specialized AI Neuroradiologist. Based on the patient's information and predicted brain tumor disease from a deep learning model, 
 provide five personalized, preventive recommendations to help manage or mitigate the condition.
 
 - Age: {data['patient_age']}
